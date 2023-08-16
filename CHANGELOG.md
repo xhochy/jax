@@ -23,6 +23,9 @@ Remember to align the itemized text with the first line of an item within a list
     `JAX_TRACEBACK_FILTERING=off` (for one unfiltered traceback).
   * jax2tf default serialization version is now 7, which introduces new shape
     [safety assertions](https://github.com/google/jax/blob/main/jax/experimental/jax2tf/README.md#errors-in-presence-of-shape-polymorphism).
+  * The host_callback mechanism now uses custom calls on GPUs by default.
+    You can still use `--jax_host_callback_use_outfeed` to revert to the
+    previous outfeed implementation mechanism.
 
 * Breaking changes:
   * jax2tf now uses native serialization by default. See
