@@ -149,15 +149,11 @@ class RuntimeTokenSet(threading.local):
     s = SingleDeviceSharding(device)
     if eff not in self.tokens:
       inp = np.zeros(0, np.bool_)
-      indices = tuple(
-          s.addressable_devices_indices_map(inp.shape).values())
-      out = pxla.shard_args([device], [indices], [s], [inp])
+      out = pxla.shard_args([s], [inp])
       self.tokens[eff] = out, device
     elif self.tokens[eff][1] != device:
       (old_token,), _ = self.tokens[eff]
-      indices = tuple(
-          s.addressable_devices_indices_map((0,)).values())
-      out = pxla.shard_args([device], [indices], [s], [old_token])
+      out = pxla.shard_args([s], [old_token])
       self.tokens[eff] = out, device
     return self.tokens[eff][0]
 
@@ -404,8 +400,7 @@ def _check_sharding(aval: core.AbstractValue, s: Sharding):
 
 def _put_x(x, s: Sharding, aval: core.AbstractValue, committed: bool):
   result_handler = pxla.global_aval_to_result_handler(aval, s, committed, False)
-  map_ = s.devices_indices_map(aval.shape)  # type: ignore
-  return result_handler(pxla.shard_arg(x, list(map_), list(map_.values()), s))
+  return result_handler(pxla.shard_arg(x, s))
 
 def _override_get_device_assignment(sharding, *args, **kwargs):
   da = sharding._device_assignment

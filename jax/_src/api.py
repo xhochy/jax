@@ -1869,7 +1869,8 @@ def _cpp_pmap(
     return out, fastpath_data
 
   cpp_mapped_f = pmap_lib.pmap(  # type: ignore
-      fun, cache_miss, static_broadcasted_tuple, pxla.shard_arg,
+      fun, cache_miss, static_broadcasted_tuple,
+      pxla.shard_arg if xla_extension_version >= 191 else _temp_shard_arg,
       pytree_registry=tree_util.default_registry)
   _pmap_cache_clears.add(cpp_mapped_f)
 
@@ -1882,6 +1883,13 @@ def _cpp_pmap(
   return pmap_f
 
 _pmap_cache_clears = weakref.WeakSet()  # type: ignore
+
+
+# TODO(yashkatariya): Remove once minimum jaxlib version is 0.4.15.
+def _temp_shard_arg(arg, devices, arg_indices, sharding, canonicalize=True):
+  if canonicalize:
+    arg = xla.canonicalize_dtype(arg)
+  return pxla.shard_arg_handlers[type(arg)](arg, sharding)
 
 
 def _pmap_lower(fun, axis_name, in_axes, out_axes, static_broadcasted_tuple,
