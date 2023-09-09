@@ -957,6 +957,24 @@ use_original_compilation_cache_key_generation = config.define_bool_state(
          "deployed, this flag and the original cache-key generation algorithm "
          "will be removed.")
 
+enable_compilation_cache = config.define_bool_state(
+    name='jax_enable_compilation_cache',
+    default=True,
+    help=('If set to False, the compilation cache will be disabled regardless '
+          'of whether initialize_cache() was called. If set to True, the '
+          'repository path could be set to a default value or via a call to '
+          'initialize_cache().'),
+)
+
+compilation_cache_repository_path = config.define_string_state(
+    name='jax_compilation_cache_repository_path',
+    default=None,
+    help=('Path for the cache repository. '
+          'Precedence: '
+          '1. A call to compilation_cache.initialize_cache(). '
+          '2. The value of this flag set in the command line or by default.'),
+)
+
 default_dtype_bits = config.define_enum_state(
     name='jax_default_dtype_bits',
     enum_values=['32', '64'],

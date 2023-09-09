@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import threading
 from typing import Optional
 import zlib
 
@@ -24,9 +25,9 @@ try:
 except ImportError:
   zstandard = None
 
-from jax._src import path as pathlib
 from jax._src import cache_key
 from jax._src.compilation_cache_interface import CacheInterface
+from jax._src.config import config
 from jax._src.gfile_cache import GFileCache
 from jax._src.lib import xla_client
 from jax._src.lib.mlir import ir
@@ -36,27 +37,62 @@ logger = logging.getLogger(__name__)
 
 _cache: Optional[CacheInterface] = None
 
+_cache_initialized: bool = False
 
-def initialize_cache(path):
-  """Creates a global cache object.
+_cache_initialized_mutex = threading.Lock()
 
-  Should only be called once per process.
 
-  Will throw an assertion error if called a second time with a different path.
+def get_file_cache(path: str) -> CacheInterface:
+  return GFileCache(path)
 
-  Args:
-    path: path for the cache directory.
+
+def initialize_cache(path) -> None:
   """
-  global _cache
-  if _cache is not None and _cache._path == pathlib.Path(path):
-    logger.warning("Cache already previously initialized at %s", _cache._path)
+  Set the repository path. To take effect, should be called prior to any calls
+  to get_executable_and_time() and put_executable_and_time().
+  """
+  config.update("jax_compilation_cache_repository_path", path)
+
+
+def _is_cache_enabled() -> bool:
+  return config.jax_enable_compilation_cache
+
+
+def _initialize_cache() -> None:
+  # Attempt to initialize the cache at most once.
+  global _cache_initialized
+  _cache_initialized_mutex.acquire()
+  if _cache_initialized:
+    logger.warning("_initialize_cache: cache has already been initialized!")
+    _cache_initialized_mutex.release()
+    return
+  _cache_initialized = True
+  _cache_initialized_mutex.release()
+
+  # Nothing to do if the cache is disabled.
+  if not _is_cache_enabled():
+    logger.warning("_initialize_cache: cache is disabled!")
     return
 
-  assert (
-      _cache is None
-  ), f"The cache path has already been initialized to {_cache._path}"
-  _cache = GFileCache(path)
-  logger.warning("Initialized persistent compilation cache at %s", path)
+  global _cache
+  assert _cache is None, "The cache has already been initialized!"
+  repository_path: str = config.jax_compilation_cache_repository_path
+  # If the repository path is not set, the cache will not be enabled.
+  if not repository_path:
+    return
+
+  _cache = get_file_cache(repository_path)
+  logger.warning("Initialized persistent compilation cache at %s",
+                 repository_path)
+
+
+def _get_cache() -> Optional[CacheInterface]:
+  # TODO(b/289098047): consider making this an API and changing the callers of
+  # get_executable_and_time() and put_executable_and_time() to call get_cache()
+  # and passing the result to them.
+  if _cache is None:
+    _initialize_cache()  # initialization is done at most once; see above
+  return _cache
 
 
 def get_executable_and_time(
@@ -65,11 +101,11 @@ def get_executable_and_time(
   """Returns the cached executable and its compilation time if present, or None
   otherwise.
   """
-  assert _cache is not None, (
-      "initialize_cache must be called before you can call"
-      " get_executable_and_time()"
-  )
-  executable_and_time = _cache.get(cache_key)
+  cache = _get_cache()
+  if cache is None:
+    logger.error("get_executable_and_time: cache is none")
+    return None, None
+  executable_and_time = cache.get(cache_key)
   if not executable_and_time:
     return None, None
   if zstandard:
@@ -94,10 +130,10 @@ def put_executable_and_time(
   """Adds the 'executable' and its compilation time to the cache repository,
   possibly evicting older entries.
   """
-  assert _cache is not None, (
-      "initialize_cache must be called before you can call"
-      "put_executable_and_time()"
-  )
+  cache = _get_cache()
+  if cache is None:
+    logger.error("put_executable_and_time: cache is none")
+    return
   logger.info(
       "Writing %s to persistent compilation cache with key %s.",
       module_name,
@@ -111,7 +147,7 @@ def put_executable_and_time(
     executable_and_time = compressor.compress(executable_and_time)
   else:
     executable_and_time = zlib.compress(executable_and_time)
-  _cache.put(cache_key, executable_and_time)
+  cache.put(cache_key, executable_and_time)
 
 
 def get_cache_key(module: ir.Module, devices: np.ndarray, compile_options,
@@ -121,15 +157,23 @@ def get_cache_key(module: ir.Module, devices: np.ndarray, compile_options,
                        produce_original_cache_key)
 
 
-def is_initialized():
-  return _cache is not None
+def is_initialized() -> bool:
+  """
+  Return whether the cache is enabled. Initialization can be deferred, so
+  initialized status is not checked. The name is retained for backwards
+  compatibility.
+  """
+  return _is_cache_enabled()
 
 
-def reset_cache():
+def reset_cache() -> None:
+  """Get back to pristine, uninitialized state."""
   global _cache
-  assert is_initialized()
-  logger.info("Resetting cache at %s.", _cache._path)
+  global _cache_initialized
+  logger.info("Resetting cache at %s.",
+              _cache._path if _cache is not None else "<empty>")
   _cache = None
+  _cache_initialized = False
 
 
 def combine_executable_and_time(
