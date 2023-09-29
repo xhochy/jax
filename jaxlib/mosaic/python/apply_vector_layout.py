@@ -2042,8 +2042,6 @@ def _tpu_concatenate_rule(
     raise NotImplementedError
   res_ty = ir.VectorType(op.result.type)
   dimension = ir.IntegerAttr(op.dimension).value
-  if dimension - res_ty.rank >= -2:
-    raise NotImplementedError("Concatenation along the last two dimensions")
   tiles = [disassemble(layout, x) for x in op.operands]
   res_tiles = np.concatenate(tiles, axis=dimension)
   ctx.replace(op, assemble(res_ty, layout, res_tiles))

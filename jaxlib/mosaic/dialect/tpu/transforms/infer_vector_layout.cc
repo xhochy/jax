@@ -605,14 +605,16 @@ class VectorLayoutInferer {
   }
 
   LogicalResult infer(tpu::ConcatenateOp op) {
-    TPU_CHECK_OP(op.getDimension() - op.getType().getRank() < -2,
-                 "Concatenation is not supported along the last two axes");
     TPU_CHECK_OP(!op.getSources().empty(),
                  "Need at least one vector to concatenate");
     // Fix all the layouts to the layout of the first operand.
     // This might not be the best strategy, but it works.
     SmallVector<Layout> in_layouts(op.getNumOperands(),
                                    getLayout(op.getSources().front()));
+    TPU_CHECK_OP(op.getDimension() - op.getType().getRank() < -2 ||
+                     in_layouts.back()->tiling() == default_tiling_,
+                 "Concatenation is not supported along the last two axes with "
+                 "a non-default tiling");
     setLayout(op, in_layouts, in_layouts.back());
     return success();
   }
