@@ -974,7 +974,7 @@ class VectorLayoutInferer {
         setLayout(op, layout, layout);
         return success();
       }
-      // Sublane (un)tiling
+      // Sublane (un)tiling.
       if (res_rank >= 2 && layout.offsets() == LayoutOffsets{0, 0} &&
           layout.tiling()[1] == target_shape_[1] &&
           src_ty.getDimSize(src_ty.getRank() - 1) ==
@@ -983,6 +983,47 @@ class VectorLayoutInferer {
           res_shape[res_shape.size() - 2] % layout.tiling()[0] == 0) {
         setLayout(op, layout, layout);
         return success();
+      }
+      // Lane (un)tiling.
+      if (res_rank >= 2 && layout.offsets() == LayoutOffsets{0, 0} &&
+          layout.tiling()[1] == target_shape_[1] &&
+          src_ty.getDimSize(src_ty.getRank() - 1) !=
+              res_shape[res_shape.size() - 1] &&
+          src_ty.getDimSize(src_ty.getRank() - 1) % layout.tiling()[1] == 0 &&
+          res_shape[res_shape.size() - 1] % layout.tiling()[1] == 0) {
+        // TODO(jevinjiang): support shapecast along lane with any bitwidth.
+        if (src_ty.getElementTypeBitWidth() != kNativeBitwidth) {
+          NYI("Shapecast along lane dimension when bitwidth is not 32");
+        }
+        // Inferring in_layout to have tiling (1, 128) triggers any necessary
+        // relayout before shapecast.
+        setInLayout(op,
+                    {VectorLayout(layout.bitwidth(), layout.offsets(),
+                                  {1, target_shape_[1]}, ImplicitDim::kNone)});
+        // Once the in_layout has tiling (1, target_shape_[1]) and the last
+        // dimension in the result's shape is equal to target_shape_[1],
+        // reshaping to any shape with the last dimension being target_shape_[1]
+        // and any out_layout is a noop. For instance, consider the source shape
+        // 8x1024 with tiling (1, target_shape_[1]). Reshaping to layouts like
+        // the following will not result in any change:
+        //  8x8x128 (1, 128)
+        //  4x16x128 (1, 128)
+        //  8x8x128 (2, 128)
+        //  8x8x128 (8, 128)
+        //  ....
+
+        if (res_shape[res_shape.size() - 1] == target_shape_[1]) {
+          // For now, we just infer tiling in out_layout to be default tiling.
+          // Because we can not represent an arbitrary aligned shape with tiling
+          // (1, 128) using VectorLayout.
+          setOutLayout(op, VectorLayout(layout.bitwidth(), layout.offsets(),
+                                        default_tiling_, ImplicitDim::kNone));
+          return success();
+        }
+
+        // TODO(b/299253805): support shapecast along lane for other cases.
+        op.emitOpError("unsupported shape cast");
+        return failure();
       }
       unsigned bitwidth = src_ty.getElementTypeBitWidth();
       auto native_tiling = nativeTiling(bitwidth);
