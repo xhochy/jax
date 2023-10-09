@@ -326,6 +326,44 @@ class NumpyLinalgTest(jtu.JaxTestCase):
         partial(jnp.linalg.eigh, UPLO=uplo), args_maker, rtol=tol
     )
 
+  @jtu.sample_product(
+      start=[0, 1, 63, 64, 65, 255],
+      end=[1, 63, 64, 65, 256],
+  )
+  def testEighSelectRange(self, start, end):
+    if start >= end:
+      return
+    dtype = np.float32
+    n = 256
+    rng = jtu.rand_default(self.rng())
+    tol = np.maximum(n, 80) * np.finfo(dtype).eps
+    args_maker = lambda: [rng((n, n), dtype)]
+    select_range = (start, end)
+    k = end - start
+    (a,) = args_maker()
+    a = (a + np.conj(a.T)) / 2
+
+    w, v = jnp.linalg.eigh(a, symmetrize_input=False, select_range=select_range)
+    w = w.astype(v.dtype)
+
+    self.assertEqual(v.shape, (n, k))
+    self.assertEqual(w.shape, (k,))
+    self.assertLessEqual(
+        np.linalg.norm(np.eye(k) - np.matmul(np.conj(T(v)), v)), 3 * tol
+    )
+    with jax.numpy_rank_promotion("allow"):
+      self.assertLessEqual(
+          np.linalg.norm(np.matmul(a, v) - w * v), tol * np.linalg.norm(a)
+      )
+
+    self._CompileAndCheck(partial(jnp.linalg.eigh), args_maker, rtol=tol)
+
+    # Compare eigenvalues against Numpy. We do not compare eigenvectors because
+    # they are not uniquely defined, but the two checks above guarantee that
+    # that they satisfy the conditions for being eigenvectors.
+    w_np = np.linalg.eigvalsh(a)[select_range[0] : select_range[1]]
+    self.assertAllClose(w_np, w, atol=tol, rtol=tol)
+
   def testEighZeroDiagonal(self):
     a = np.array([[0., -1., -1.,  1.],
                   [-1.,  0.,  1., -1.],

@@ -380,9 +380,13 @@ def eigvals(a: ArrayLike) -> Array:
 
 
 @_wraps(np.linalg.eigh)
-@partial(jit, static_argnames=('UPLO', 'symmetrize_input'))
-def eigh(a: ArrayLike, UPLO: Optional[str] = None,
-         symmetrize_input: bool = True) -> tuple[Array, Array]:
+@partial(jit, static_argnames=("UPLO", "symmetrize_input", "select_range"))
+def eigh(
+    a: ArrayLike,
+    UPLO: Optional[str] = None,
+    symmetrize_input: bool = True,
+    select_range: Optional[tuple[int, int]] = None,
+) -> tuple[Array, Array]:
   check_arraylike("jnp.linalg.eigh", a)
   if UPLO is None or UPLO == "L":
     lower = True
@@ -393,15 +397,24 @@ def eigh(a: ArrayLike, UPLO: Optional[str] = None,
     raise ValueError(msg)
 
   a, = promote_dtypes_inexact(jnp.asarray(a))
-  v, w = lax_linalg.eigh(a, lower=lower, symmetrize_input=symmetrize_input)
+  v, w = lax_linalg.eigh(
+      a,
+      lower=lower,
+      symmetrize_input=symmetrize_input,
+      select_range=select_range,
+  )
   return w, v
 
 
 @_wraps(np.linalg.eigvalsh)
-@partial(jit, static_argnames=('UPLO',))
-def eigvalsh(a: ArrayLike, UPLO: Optional[str] = 'L') -> Array:
+@partial(jit, static_argnames=("UPLO", "select_range"))
+def eigvalsh(
+    a: ArrayLike,
+    UPLO: Optional[str] = "L",
+    select_range: Optional[tuple[int, int]] = None,
+) -> Array:
   check_arraylike("jnp.linalg.eigvalsh", a)
-  w, _ = eigh(a, UPLO)
+  w, _ = eigh(a, UPLO, select_range=select_range)
   return w
 
 
