@@ -59,6 +59,27 @@ py_library(
 )
 
 py_library(
+    name = "layout_defs",
+    srcs = [
+        "layout_defs.py",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "//jaxlib/mlir:arithmetic_dialect",
+        "//jaxlib/mlir:func_dialect",
+        "//jaxlib/mlir:ir",
+        "//jaxlib/mlir:math_dialect",
+        "//jaxlib/mlir:memref_dialect",
+        "//jaxlib/mlir:pass_manager",
+        "//jaxlib/mlir:scf_dialect",
+        "//jaxlib/mlir:stablehlo_dialect",
+        "//jaxlib/mlir:vector_dialect",
+    ] + py_deps("numpy"),
+)
+
+py_library(
     name = "tpu_passes",
     srcs = [
         "apply_vector_layout.py",
@@ -68,6 +89,7 @@ py_library(
         "//visibility:public",
     ],
     deps = [
+        ":layout_defs",
         ":tpu_dialect",
         "//jaxlib/mlir:arithmetic_dialect",
         "//jaxlib/mlir:func_dialect",
