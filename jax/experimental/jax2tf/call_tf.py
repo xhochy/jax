@@ -464,17 +464,6 @@ def _call_tf_lowering(
     output_avals,
     **_,
 ):
-  # We use the same TF lowering device as for the embedding JAX computation.
-  # One example when this is needed is when the code refers to variables on one
-  # device. Or, for sharding annotations (only supported on TPU).
-
-  if platform in ["cpu", "tpu"]:
-    tf_platform = platform.upper()
-  elif platform == "cuda":
-    tf_platform = "GPU"
-  else:
-    raise ValueError("platform {platform} not supported")
-
   concrete_function_flat_tf = _get_concrete_function_tf(function_flat_tf, args_flat_sig_tf)
 
   captured_inputs = []
@@ -519,12 +508,10 @@ def _call_tf_lowering(
   args_tf_flat = [convert_to_spec(a) for a in args_flat_sig_tf]
 
   with jax2tf_internal.inside_call_tf():
-    # When the TF computation uses variables on a particular device, we must
-    # get_compiler_ir for that exact device.
-    tf_device_name = f"/device:{tf_platform}:0"
     try:
-      func_tf_hlo = function_flat_tf.experimental_get_compiler_ir(*args_tf_flat)(
-          stage="hlo_serialized", device_name=tf_device_name)
+      func_tf_hlo = function_flat_tf.experimental_get_compiler_ir(
+          *args_tf_flat
+      )(stage="hlo_serialized")
     except Exception as e:
       msg = ("Error compiling TensorFlow function (see below for the caught exception)." +
              "\ncall_tf can used " +
