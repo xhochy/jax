@@ -736,6 +736,29 @@ jax_test(
     tags = ["noasan"],  # Times out
 )
 
+jax_test(
+    name = "random_lax_with_prng_test",
+    srcs = ["random_lax_with_prng_test.py"],
+    backend_tags = {
+        "cpu": [
+            "notsan",  # Times out
+            "nomsan",  # Times out
+        ],
+        "tpu": [
+            "optonly",
+            "nomsan",  # Times out
+            "notsan",  # Times out
+        ],
+    },
+    shard_count = {
+        "cpu": 30,
+        "gpu": 30,
+        "tpu": 40,
+        "iree": 30,
+    },
+    tags = ["noasan"],  # Times out
+)
+
 # TODO(b/199564969): remove once we always enable_custom_prng
 jax_test(
     name = "random_test_with_custom_prng",
